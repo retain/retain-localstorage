@@ -22,7 +22,8 @@
   },
   "homepage": "https://github.com/giuliandrimba/retain-localstorage",
   "dependencies": {
-    "q": "~1.0.0"
+    "q": "~1.0.0",
+    "coveralls": "~2.8.0"
   },
   "devDependencies": {
     "mocha": "~1.17.0",
