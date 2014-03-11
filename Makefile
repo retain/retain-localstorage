@@ -1,5 +1,4 @@
 TESTS = test/spec
-REPORTER = spec
 MOCHA = ./node_modules/mocha/bin/_mocha
 ISTANBUL = ./node_modules/istanbul/lib/cli.js
 MOCHA_PHANTOM = ./node_modules/mocha-phantomjs/bin/mocha-phantomjs
