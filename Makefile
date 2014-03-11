@@ -19,7 +19,7 @@ test-mocha:
 test-cov: compile istanbul
 
 istanbul:
-	$(MOCHA_PHANTOM) -p ./node_modules/phantomjs/bin/phantomjs ./test/index.html
+	$(ISTANBUL) cover $(MOCHA_PHANTOM) ./test/index.html
 
 coveralls:
 	cat ./coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js
