@@ -1,13 +1,10 @@
-var retain = require("retain");
-var server = require("../fixtures/server")
-var assert = require("chai").assert;
+var assert = chai.assert;
 
-
-describe("RetainAjax", function()
+describe("RetainLocalStorage", function()
 {
-  before(function()
+  it("should work", function(done)
   {
-    server.start();
-  });
+    done();
+  })
 
 });

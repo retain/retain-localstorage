@@ -1,8 +1,8 @@
 TESTS = test/spec
 REPORTER = spec
 MOCHA = ./node_modules/mocha/bin/mocha
-_MOCHA = ./node_modules/mocha/bin/_mocha
 ISTANBUL = ./node_modules/istanbul/lib/cli.js
+MOCHA_PHANTOM = ./node_modules/mocha-phantomjs/bin/mocha-phantomjs
 
 server:
 	node test/fixtures/server.js --server
@@ -10,7 +10,7 @@ server:
 test: test-mocha
 
 test-mocha:
-	$(MOCHA) --timeout 200 $(TESTS) --reporter spec
+	$(MOCHA_PHANTOM) -p ./node_modules/phantomjs/bin/phantomjs ./test/index.html
 
 test-cov: istanbul
 

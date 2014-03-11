@@ -30,6 +30,8 @@
     "coveralls": "~2.6.1",
     "chai": "~1.8.1",
     "express": "~3.4.8",
-    "retain": "~0.2.2"
+    "retain": "~0.2.2",
+    "mocha-phantomjs": "~3.3.2",
+    "phantomjs": "~1.9.7-1"
   }
 }
