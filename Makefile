@@ -15,7 +15,7 @@ test-mocha:
 test-cov: istanbul
 
 istanbul:
-	$(ISTANBUL) cover $(_MOCHA) -- -R spec test/spec
+	$(ISTANBUL) cover $(MOCHA_PHANTOM) -R ./test/index.html -p ./node_modules/phantomjs/bin/phantomjs
 
 coveralls:
 	cat ./coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js
