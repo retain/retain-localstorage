@@ -64,7 +64,7 @@ function _new(record)
     record.id = _guid()
   }
 
-  window.localStorage.setItem(this.name+"-"+record.id, JSON.stringify(record));
+  window.localStorage.setItem(this.config.name+"-"+record.id, JSON.stringify(record));
   this._records().push({id:record.id.toString(), cid:record._cid});
   this._save();
 
@@ -82,7 +82,7 @@ function _set(record)
   }
   else
   {
-    window.localStorage.setItem(this.name+"-"+JSON.stringify(record));
+    window.localStorage.setItem(this.config.name+"-"+JSON.stringify(record));
     deferred.resolve(record);
   }
 
@@ -136,6 +136,8 @@ function _remove(record)
     }
   };
 
+  window.localStorage.removeItem(this.config.name+"-"+record.id);
+
   return Q(record);
 }
 
@@ -170,7 +172,7 @@ function _update(props, record)
 
 function _save()
 {
-  window.localStorage.setItem(this.name, this._records().join(","));
+  window.localStorage.setItem(this.config.name, this._records().join(","));
 }
 
 function _get_records()
@@ -181,7 +183,7 @@ function _get_records()
   for(var i = 0, total = this._records().length; i < total; i++)
   {
     record = this._records()[i];
-    var item = JSON.parse(window.localStorage.getItem(this.name+"-"+record.id));
+    var item = JSON.parse(window.localStorage.getItem(this.config.name+"-"+record.id));
     items.push(item);
   }
 
@@ -2826,6 +2828,7 @@ describe("RetainLocalStorage", function()
     {
       if(res)
       {
+        console.log("window", window.localStorage);
         done();
       }
 

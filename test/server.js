@@ -18,5 +18,5 @@ exports.start = function()
   console.log('Listening on port 3000');
 }
 
-if(process.argv[0] === "server")
+if(process.argv[2] === "--server")
   exports.start()

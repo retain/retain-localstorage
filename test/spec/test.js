@@ -74,6 +74,7 @@ describe("RetainLocalStorage", function()
     {
       if(res)
       {
+        console.log("window", window.localStorage);
         done();
       }
 
