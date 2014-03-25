@@ -82,7 +82,7 @@ function _set(record)
   }
   else
   {
-    window.localStorage.setItem(this.config.name+"-"+JSON.stringify(record));
+    window.localStorage.setItem(this.config.name+"-"+(record.id || record._cid), JSON.stringify(record));
     deferred.resolve(record);
   }
 
@@ -172,7 +172,14 @@ function _update(props, record)
 
 function _save()
 {
-  window.localStorage.setItem(this.config.name, this._records().join(","));
+  var storageItems = [];
+
+  for(var i =0, total = this._records().length; i < total; i++)
+  {
+    storageItems.push(JSON.stringify(this._records()[i]))
+  }
+
+  window.localStorage.setItem(this.config.name, JSON.stringify(storageItems));
 }
 
 function _get_records()
@@ -2760,15 +2767,21 @@ describe("RetainLocalStorage", function()
 {
   var Movies = retain();
   var enterTheVoid = null;
+  var collectionName = "movies";
 
   Movies.attrs({
     name:String,
     watched:Boolean
   })
 
+  before(function()
+  {
+    window.localStorage.clear();
+  });
+
   it("it should add retain-localstorage as a plugin", function(done)
   {
-    Movies.use(retainLocalStorage, {name:"movies"});
+    Movies.use(retainLocalStorage, {name:collectionName});
     done();
   })
   
@@ -2778,6 +2791,9 @@ describe("RetainLocalStorage", function()
       {
         if(res)
         {
+          var item = window.localStorage.getItem(collectionName+"-"+res.id);
+          item = JSON.parse(item);
+          assert.equal(item.id, res.id);
           done();
         }
       });
@@ -2789,9 +2805,11 @@ describe("RetainLocalStorage", function()
     {
       if(res)
       {
+        var items = window.localStorage.getItem(collectionName);
+        items = JSON.parse(items);
+        assert.equal(items.length, res.length);
         done();
       }
-
     });
 
   })
@@ -2802,6 +2820,9 @@ describe("RetainLocalStorage", function()
     {
       if(res)
       {
+        var item = window.localStorage.getItem(collectionName+"-"+res.id);
+        item = JSON.parse(item);
+        assert.equal(item.id, res.id);
         done();
       }
 
@@ -2815,9 +2836,11 @@ describe("RetainLocalStorage", function()
     {
       if(res)
       {
+        var item = window.localStorage.getItem(collectionName+"-"+res.id);
+        item = JSON.parse(item);
+        assert.equal(item._keys.name, "PI");
         done();
       }
-
     });
   })
 
@@ -2826,13 +2849,16 @@ describe("RetainLocalStorage", function()
     var movie = Movies.find(1);
     movie.remove(function(res, err)
     {
+
       if(res)
       {
-        console.log("window", window.localStorage);
+        var item = window.localStorage.getItem(collectionName+"-"+res.id);
+        assert.equal(item, null);
         done();
       }
 
     });
+
   })
 
 });
