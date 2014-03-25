@@ -13,11 +13,11 @@ Retain localStorage plugin
 
   ``` javascript
   var retain = require("retain");
-  var retainAjax = require("retain-localstorage");
+  var retainLocalStorage = require("retain-localstorage");
   
   var Movies = retain();
   
-  Movies.use(retainAjax, {
+  Movies.use(retainLocalStorage, {
         name: "movies"
       })
   ```
