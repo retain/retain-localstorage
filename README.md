@@ -7,7 +7,7 @@ Retain localStorage plugin
 
 ### Config
 
-* _name__: LocalStorage collection name.
+* __name__: LocalStorage collection name.
 
 * __Example:__
 

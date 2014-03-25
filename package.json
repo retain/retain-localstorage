@@ -1,6 +1,6 @@
 {
   "name": "retain-localstorage",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Retain localStorage client-side plugin",
   "main": "lib/index.js",
   "scripts": {
