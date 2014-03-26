@@ -1,26 +1,27 @@
 retain-localstorage
 ===================
 
-Retain localStorage plugin
+[Retain](https://github.com/giuliandrimba/retain) localStorage plugin
 
 [![Build Status](https://travis-ci.org/giuliandrimba/retain-localstorage.png?branch=master)](https://travis-ci.org/giuliandrimba/retain-localstorage) 
+
+### Example
+
+To start saving the __Retain__ data in the `localStorage`, simply inject the plugin into the Model.
+
+``` javascript
+var retain = require("retain");
+var retainLocalStorage = require("retain-localstorage");
+
+var Movies = retain();
+
+Movies.use(retainLocalStorage, { name: "movies"});
+
+```
 
 ### Config
 
 * __name__: LocalStorage collection name.
-
-* __Example:__
-
-  ``` javascript
-  var retain = require("retain");
-  var retainLocalStorage = require("retain-localstorage");
-  
-  var Movies = retain();
-  
-  Movies.use(retainLocalStorage, {
-        name: "movies"
-      })
-  ```
 
 ### Creating a plugin
 
