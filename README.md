@@ -1,5 +1,5 @@
-retain-localstorage
-===================
+![Retain-LocalStorage](assets/logo.jpg)
+===========
 
 [Retain](https://github.com/giuliandrimba/retain) localStorage plugin
 
