@@ -162,14 +162,6 @@ function _get_record(id)
   return found;
 }
 
-function _update(props, record)
-{
-  for(var p in props)
-  {
-    record[p] = props[p];
-  }
-}
-
 function _save()
 {
   var storageItems = [];
@@ -2240,13 +2232,13 @@ Retain._REMOVED = 0
 /**
 * Changes the name of the 'ID' property.
 *
-* @attribute id_prop 
+* @attribute idProp 
 * @example
   ```
-    Movies.id_prop = "_id"; // Useful when working with data coming from MongoDB (it uses '_id')
+    Movies.idProp = "_id"; // Useful when working with data coming from MongoDB (it uses '_id')
   ```
 */
-Retain.id_prop = "id";
+Retain.idProp = "id";
 
 /**
 * Adds a plugin middleware to the Model
@@ -2329,9 +2321,28 @@ Retain.new = function (callback)
   this._TOTAL = this._records.length
   record._cid = this._TOTAL + this._REMOVED;
 
-  this._run_plugins("new", record, callback);
+  this._newRemotelly(record, callback);
 
   return record;
+}
+
+Retain._newRemotelly = function(record, callback)
+{
+  var self = this;
+  if(callback)
+  {
+    this._runPlugins("new", record, function(res, err)
+      {
+        var rec = res;
+
+        if(rec)
+        {
+          rec = record.set(res);
+        }
+
+        callback(rec, err)
+      });
+  }
 }
 
 /**
@@ -2365,12 +2376,36 @@ Retain.prototype.set = function(props, callback)
 
   for(var prop in props)
   {
-    this._validate_prop(prop, props[prop]);
+    this._validateProp(prop, props[prop]);
   }
 
-  this.constructor._run_plugins("set", this, callback);
+  this._setRemotelly(props, this, callback);
 
   return this;
+}
+
+Retain.prototype._setRemotelly = function(props, record, callback)
+{
+  var self = this;
+  var params;
+
+  params = props;
+  params.id = record[this.constructor.idProp];
+
+  if(callback)
+  {
+    this.constructor._runPlugins("set", params, function(res, err)
+      {
+        var rec = res;
+
+        if(res)
+        {
+          rec = self.set(res);
+        }
+        
+        callback(rec, err)
+      });
+  }
 }
 
 /**
@@ -2415,34 +2450,85 @@ Retain.prototype.get = function(prop)
 
   ```
 */
-Retain.find = function(id, callback)
+Retain.find = function(props, callback)
 {
   var found = null;
-  var record = {id:id};
+  var filter = props;
+  var self = this;
 
-  // Search by ID
-  for(var i = 0, total = this._records.length; i < total; i++)
+  if (typeof props === "number" || typeof props === "string")
   {
-    if(parseInt(this._records[i][this.id_prop]) === id)
-    {
-      found = this._records[i];
+    // Search by ID
+    filter = {};
+    filter[this.idProp] = props;
+    found = this._findWhere(filter);
+
+    // Search by CID
+    if(!found.length)
+    { 
+      filter = {};
+      filter["_cid"] = props
+      found = this._findWhere(filter)
     }
+
+  }
+  else
+  {
+    found = this._findWhere(filter);
   }
 
-  // Search by CID
-  for(i = 0; i < total; i++)
+  if(callback)
   {
-    if(parseInt(this._records[i]["_cid"]) === id && !found)
+    this._allRemotelly(function(res, err)
     {
-      found = this._records[i];
-    }
+      var result = self.find(props);
+
+      callback(result, err)
+    })
   }
 
-  if(found)
-    record = found;
+  if(found.length === 1)
+    return found[0];
 
-  this._run_plugins("find", record, callback);
   return found;
+}
+
+Retain._findRemotelly = function(filter, callback)
+{
+  var self = this;
+  var params;
+
+  params = filter;
+
+  if(callback)
+  {
+    this._runPlugins("find", filter, function(res, err)
+      {
+        var rec = res;
+
+        if(res)
+        {
+          for(var i = 0, total = res.length; i < total; i++)
+          {
+            var record = self.find(res.id);
+
+            if(record.length)
+            {
+              record[0].set(res);
+            }
+            else
+            {
+              var newRecord = this.new()
+              newRecord.set(res);
+            }
+          }
+
+        }
+        
+        callback(res, err)
+
+      });
+  }
 }
 
 /**
@@ -2466,15 +2552,34 @@ Retain.find = function(id, callback)
 */
 Retain.all = function(callback)
 {
-  this._run_plugins("all", this._records, callback);
+  this._allRemotelly(callback);
+
   return this._records;
+}
+
+Retain._allRemotelly = function(callback)
+{
+  var self = this;
+
+  if(callback)
+  {
+    this._runPlugins("all", this._records, function(res, err)
+      {
+        if(res)
+        {
+          self._records = res;
+        }
+        
+        callback(res, err)
+      });
+  }
 }
 
 /**
 * Removes/deletes the record locally.
 *
 * If a callback is suplied, and there is at least one plugin attached to the model, removes the record remotelly.
-* @method find
+* @method remove
 * @param {Function} [callback] If suplied, it will be called when the record was removed/deleted remotelly.
 * @example
   ```
@@ -2507,12 +2612,16 @@ Retain.prototype.remove = function(callback)
 
     if(parseInt(record._cid) === cid)
     {
+      // console.log("record._cid", record._cid, record);
       this.constructor._REMOVED++;
       this.constructor._records.splice(i,1);
     }
   };
 
-  this.constructor._run_plugins("remove", this, callback);
+  if(callback)
+  {
+    this.constructor._runPlugins("remove", this, callback);
+  }
 }
 
 /**
@@ -2540,13 +2649,13 @@ Retain.prototype.save = function(callback)
 
   if(this._isNew() && !this._isRemoved())
   {
-    that.constructor._run_plugins("new", that, function()
+    that.constructor._runPlugins("new", that, function()
     {
       var keys = Object.keys(that._keys);
 
       if(keys.length)
       {
-        that.constructor._run_plugins("set", that, function()
+        that.constructor._runPlugins("set", that, function()
         {
           if(callback)
           {
@@ -2568,7 +2677,7 @@ Retain.prototype.save = function(callback)
   }
   else if(!this._isRemoved())
   {
-    that.constructor._run_plugins("set", that, function()
+    that.constructor._runPlugins("set", that, function()
     {
       if(callback)
         callback()
@@ -2602,27 +2711,24 @@ Retain.prototype._isNew = function()
     return false;
 }
 
-Retain._run_plugins = function(method, initialValue, callback)
+Retain._runPlugins = function(method, initialValue, callback)
 {
-  if(callback)
-  {
-    // Reference https://github.com/kriskowal/q#sequences
-    var plugins = this._get_plugins(method);
-    var self = this;
+  // Reference https://github.com/kriskowal/q#sequences
+  var plugins = this._get_plugins(method);
+  var self = this;
 
-    plugins.reduce(Q.when, Q(initialValue))
-      .then(function(res)
-      {
-        self.emit("change", res);
-        self.emit(method, res);
-        callback(res,null);
-      })
-      .fail(function(err)
-      {
-        self.emit("error", err);
-        callback(null,err)
-      });
-  }
+  plugins.reduce(Q.when, Q(initialValue))
+    .then(function(res)
+    {
+      self.emit("change", res);
+      self.emit(method, res);
+      callback(res,null);
+    })
+    .fail(function(err)
+    {
+      self.emit("error", err);
+      callback(null,err)
+    });
 }
 
 Retain._init = function()
@@ -2651,7 +2757,7 @@ Retain.prototype._keys = {}
 
 Retain.prototype._cid = {}
 
-Retain.prototype._validate_type = function(prop, val)
+Retain.prototype._validateType = function(prop, val)
 {
   var attr = this.constructor._attrs[prop];
 
@@ -2666,6 +2772,7 @@ Retain.prototype._validate_type = function(prop, val)
       case "Number":
         return (typeof val === "number");
       case "Array":
+        return (Array.isArray(val))
       case "Object":
       case "Date":
         return (val instanceof attr);
@@ -2673,11 +2780,11 @@ Retain.prototype._validate_type = function(prop, val)
   }
 }
 
-Retain.prototype._validate_prop = function(prop, value)
+Retain.prototype._validateProp = function(prop, value)
 {
   if(this.constructor._attrs[prop])
   {
-    if(this._validate_type(prop, value))
+    if(this._validateType(prop, value))
     {
       this._keys[prop] = value;
     }
@@ -2692,7 +2799,41 @@ Retain.prototype._validate_prop = function(prop, value)
   }
 }
 
-},{"happens":5,"q":3}],5:[function(require,module,exports){
+Retain._findWhere = function(params)
+{
+  var found = [];
+
+  for(var i = 0; i < this._records.length; i++)
+  {
+    var record = this._records[i];
+
+    if(this._hasProperties(record, params))
+    {
+      found.push(record);
+    }
+  }
+
+  return found;
+}
+
+Retain._hasProperties = function(obj, props)
+{
+  if(!props["_cid"] && !props[this.idProp])
+  {
+    obj = obj._keys;
+  }
+
+  for (var prop in props) 
+  {
+    if(obj[prop] != props[prop])
+    {
+      return false;
+    }
+  }
+
+  return true;
+}
+},{"happens":5,"q":6}],5:[function(require,module,exports){
 module.exports = function(target) {
   for(var prop in Happens)
     target[prop] = Happens[prop];
@@ -2728,6 +2869,8 @@ var Happens = {
   }
 };
 },{}],6:[function(require,module,exports){
+module.exports=require(3)
+},{"/Users/giuliandrimba/code/retain-localstorage/node_modules/browserify/node_modules/insert-module-globals/node_modules/process/browser.js":2}],7:[function(require,module,exports){
 var assert = chai.assert;
 var retain = require("retain")
 var retainLocalStorage = require("../../lib/index.js")
@@ -2831,4 +2974,4 @@ describe("RetainLocalStorage", function()
   })
 
 });
-},{"../../lib/index.js":1,"retain":4}]},{},[6])
+},{"../../lib/index.js":1,"retain":4}]},{},[7])
