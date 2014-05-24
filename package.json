@@ -1,6 +1,6 @@
 {
   "name": "retain-localstorage",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Retain localStorage client-side plugin",
   "main": "lib/index.js",
   "scripts": {
@@ -28,7 +28,7 @@
     "mocha": "~1.17.0",
     "chai": "~1.8.1",
     "express": "~3.4.8",
-    "retain": "~0.2.2",
+    "retain": "~0.2.4",
     "mocha-phantomjs": "~3.3.2",
     "phantomjs": "~1.9.7-1",
     "browserify": "~3.32.1"

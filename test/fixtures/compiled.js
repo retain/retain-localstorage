@@ -15,10 +15,13 @@ module.exports = function(){
   api.find = _find;
   api.all = _all;
   api.remove = _remove;
+  api.search = _search;
   api._save = _save;
   api._records = _records
-  api._get_records = _get_records
-  api._get_record = _get_record
+  api._getRecords = _getRecords
+  api._findById = _findById
+  api._findByProp = _findByProp
+  api._findRecord = _findRecord
 
   return api;
 };
@@ -65,7 +68,7 @@ function _new(record)
   }
 
   window.localStorage.setItem(this.config.name+"-"+record.id, JSON.stringify(record));
-  this._records().push({id:record.id.toString(), cid:record._cid});
+  this._records().push({id:record.id.toString(), _cid:record._cid});
   this._save();
 
   return Q(record);
@@ -74,7 +77,7 @@ function _new(record)
 function _set(record)
 {
   var deferred = Q.defer();
-  var found = this._get_record(record.id) || this._get_record(record._cid);
+  var found = this._findById(record.id) || this._findById(record._cid);
 
   if(!found)
   {
@@ -89,13 +92,13 @@ function _set(record)
   return deferred.promise;
 }
 
-function _find(record)
+function _find(id)
 {
   var deferred = Q.defer();
 
-  var id = record.id;
-  var records = this._get_records();
-  var found = this._get_record(id);
+  var records = this._getRecords();
+
+  var found = this._findById(id);
 
   if(found)
   {
@@ -103,9 +106,8 @@ function _find(record)
   }
   else
   {
-    deferred.reject(new Error("Couldn't find record with the ID " + record.id));
+    deferred.reject(new Error("Couldn't find record with the ID " + id));
   }
-
   return deferred.promise;
 }
 
@@ -118,7 +120,7 @@ function _all(records)
     this._save();
   }
 
-  return Q(this._get_records());
+  return Q(this._getRecords());
 }
 
 function _remove(record)
@@ -141,19 +143,55 @@ function _remove(record)
   return Q(record);
 }
 
-function _get_record(id)
+function _search(record)
 {
-  var records = this._get_records();
+  var deferred = Q.defer();
+  var found = this._findRecord(record);
+
+  if(found)
+  {
+    deferred.resolve(found);
+  }
+  else
+  {
+    deferred.reject(new Error("Couldn't find record with the properties: " + record));
+  }
+
+  return deferred.promise;
+}
+
+function _findRecord(props)
+{
+  var found = null;
+
+  for (var p in props)
+  {
+    found = this._findByProp(p, props[p])
+
+    if(found)
+      return found
+  }
+
+  return found;
+}
+
+function _findById(id)
+{
+  var found = null;
+
+  found = this._findRecord({id:id, _cid:id})
+
+  return found;
+}
+
+function _findByProp(key, val)
+{
+  var records = this._getRecords();
   var found = null;
 
   for(var i = 0, total = records.length; i < total; i++)
   {
-    if(records[i].id === id)
-    {
-      return records[i];
-    }
-
-    if(parseInt(records[i]._cid) === parseInt(id))
+    if(records[i][key] === val)
     {
       return records[i];
     }
@@ -162,19 +200,11 @@ function _get_record(id)
   return found;
 }
 
-function _update(props, record)
-{
-  for(var p in props)
-  {
-    record[p] = props[p];
-  }
-}
-
 function _save()
 {
   var storageItems = [];
 
-  for(var i =0, total = this._records().length; i < total; i++)
+  for(var i = 0, total = this._records().length; i < total; i++)
   {
     storageItems.push(JSON.stringify(this._records()[i]))
   }
@@ -182,7 +212,7 @@ function _save()
   window.localStorage.setItem(this.config.name, JSON.stringify(storageItems));
 }
 
-function _get_records()
+function _getRecords()
 {
   var items = [];
   var record = {};
@@ -193,7 +223,6 @@ function _get_records()
     var item = JSON.parse(window.localStorage.getItem(this.config.name+"-"+record.id));
     items.push(item);
   }
-
   return items;
 }
 
@@ -589,22 +618,6 @@ if (typeof ReturnValue !== "undefined") {
     };
 }
 
-// Until V8 3.19 / Chromium 29 is released, SpiderMonkey is the only
-// engine that has a deployed base of browsers that support generators.
-// However, SM's generators use the Python-inspired semantics of
-// outdated ES6 drafts.  We would like to support ES6, but we'd also
-// like to make it possible to use generators in deployed browsers, so
-// we also support Python-style generators.  At some point we can remove
-// this block.
-var hasES6Generators;
-try {
-    /* jshint evil: true, nonew: false */
-    new Function("(function* (){ yield 1; })");
-    hasES6Generators = true;
-} catch (e) {
-    hasES6Generators = false;
-}
-
 // long stack traces
 
 var STACK_JUMP_SEPARATOR = "From previous event:";
@@ -905,6 +918,7 @@ defer.prototype.makeNodeResolver = function () {
  * @returns a promise that may be resolved with the given resolve and reject
  * functions, or rejected by a thrown exception in resolver
  */
+Q.Promise = promise; // ES6
 Q.promise = promise;
 function promise(resolver) {
     if (typeof resolver !== "function") {
@@ -918,6 +932,11 @@ function promise(resolver) {
     }
     return deferred.promise;
 }
+
+promise.race = race; // ES6
+promise.all = all; // ES6
+promise.reject = reject; // ES6
+promise.resolve = Q; // ES6
 
 // XXX experimental.  This method is a way to denote that a local value is
 // serializable and should be immediately dispatched to a remote upon request,
@@ -1243,42 +1262,14 @@ Promise.prototype.isRejected = function () {
 // shimmed environments, this would naturally be a `Set`.
 var unhandledReasons = [];
 var unhandledRejections = [];
-var unhandledReasonsDisplayed = false;
 var trackUnhandledRejections = true;
-function displayUnhandledReasons() {
-    if (
-        !unhandledReasonsDisplayed &&
-        typeof window !== "undefined" &&
-        window.console
-    ) {
-        console.warn("[Q] Unhandled rejection reasons (should be empty):",
-                     unhandledReasons);
-    }
-
-    unhandledReasonsDisplayed = true;
-}
-
-function logUnhandledReasons() {
-    for (var i = 0; i < unhandledReasons.length; i++) {
-        var reason = unhandledReasons[i];
-        console.warn("Unhandled rejection reason:", reason);
-    }
-}
 
 function resetUnhandledRejections() {
     unhandledReasons.length = 0;
     unhandledRejections.length = 0;
-    unhandledReasonsDisplayed = false;
 
     if (!trackUnhandledRejections) {
         trackUnhandledRejections = true;
-
-        // Show unhandled rejection reasons if Node exits without handling an
-        // outstanding rejection.  (Note that Browserify presently produces a
-        // `process` global without the `EventEmitter` `on` method.)
-        if (typeof process !== "undefined" && process.on) {
-            process.on("exit", logUnhandledReasons);
-        }
     }
 }
 
@@ -1293,7 +1284,6 @@ function trackRejection(promise, reason) {
     } else {
         unhandledReasons.push("(no stack) " + reason);
     }
-    displayUnhandledReasons();
 }
 
 function untrackRejection(promise) {
@@ -1317,9 +1307,6 @@ Q.getUnhandledReasons = function () {
 
 Q.stopUnhandledRejectionTracking = function () {
     resetUnhandledRejections();
-    if (typeof process !== "undefined" && process.on) {
-        process.removeListener("exit", logUnhandledReasons);
-    }
     trackUnhandledRejections = false;
 };
 
@@ -1483,7 +1470,17 @@ function async(makeGenerator) {
         // when verb is "throw", arg is an exception
         function continuer(verb, arg) {
             var result;
-            if (hasES6Generators) {
+
+            // Until V8 3.19 / Chromium 29 is released, SpiderMonkey is the only
+            // engine that has a deployed base of browsers that support generators.
+            // However, SM's generators use the Python-inspired semantics of
+            // outdated ES6 drafts.  We would like to support ES6, but we'd also
+            // like to make it possible to use generators in deployed browsers, so
+            // we also support Python-style generators.  At some point we can remove
+            // this block.
+
+            if (typeof StopIteration === "undefined") {
+                // ES6 Generators
                 try {
                     result = generator[verb](arg);
                 } catch (exception) {
@@ -1495,6 +1492,7 @@ function async(makeGenerator) {
                     return when(result.value, callback, errback);
                 }
             } else {
+                // SpiderMonkey Generators
                 // FIXME: Remove this case when SM does ES6 generators.
                 try {
                     result = generator[verb](arg);
@@ -2271,13 +2269,13 @@ Retain._REMOVED = 0
 /**
 * Changes the name of the 'ID' property.
 *
-* @attribute id_prop 
+* @attribute idProp 
 * @example
   ```
-    Movies.id_prop = "_id"; // Useful when working with data coming from MongoDB (it uses '_id')
+    Movies.idProp = "_id"; // Useful when working with data coming from MongoDB (it uses '_id')
   ```
 */
-Retain.id_prop = "id";
+Retain.idProp = "id";
 
 /**
 * Adds a plugin middleware to the Model
@@ -2349,8 +2347,13 @@ Retain.attrs = function(props)
     })
   ```
 */
-Retain.new = function (callback)
+Retain.new = function (props, callback)
 {
+  var fn = callback;
+
+  if(typeof props === "function")
+    fn = props;
+
   var key, record, value;
 
   record = new this;
@@ -2360,9 +2363,41 @@ Retain.new = function (callback)
   this._TOTAL = this._records.length
   record._cid = this._TOTAL + this._REMOVED;
 
-  this._run_plugins("new", record, callback);
+  if(typeof props === "object")
+    record.set(props);
+
+  this._newRemotelly(record, fn);
 
   return record;
+}
+
+Retain._newRemotelly = function(record, callback)
+{
+  var self = this;
+  if(callback)
+  {
+    var params;
+
+    params = record._keys;
+    params["id"] = record[this.constructor.idProp];
+    params["_cid"] = record._cid;
+
+    this._runPlugins("new", params, function(res, err)
+      {
+        var rec = res;
+
+        if(rec)
+        {
+          rec = record.set(res);
+        }
+        self.emit("new", record);
+        callback(rec, err)
+      });
+  }
+  else
+  {
+    self.emit("new", record);
+  }
 }
 
 /**
@@ -2391,17 +2426,46 @@ Retain.new = function (callback)
 */
 Retain.prototype.set = function(props, callback)
 {
-
   var args = 1 <= props.length ? [].slice.call(props, 0) : [];
 
   for(var prop in props)
   {
-    this._validate_prop(prop, props[prop]);
+    this._validateProp(prop, props[prop]);
   }
 
-  this.constructor._run_plugins("set", this, callback);
+  this._setRemotelly(props, this, callback);
 
   return this;
+}
+
+Retain.prototype._setRemotelly = function(props, record, callback)
+{
+  var self = this;
+  var params;
+
+  params = props;
+  params["id"] = record[this.constructor.idProp];
+
+  if(callback)
+  {
+    this.constructor._runPlugins("set", params, function(res, err)
+      {
+
+        var rec = res;
+
+        if(res)
+        {
+          rec = self.set(res);
+        }
+        
+        self.emit("change", record);
+        callback(rec, err)
+      });
+  }
+  else
+  {
+    self.emit("change", record);
+  }
 }
 
 /**
@@ -2449,31 +2513,138 @@ Retain.prototype.get = function(prop)
 Retain.find = function(id, callback)
 {
   var found = null;
-  var record = {id:id};
+  var self = this;
 
-  // Search by ID
-  for(var i = 0, total = this._records.length; i < total; i++)
-  {
-    if(parseInt(this._records[i][this.id_prop]) === id)
-    {
-      found = this._records[i];
-    }
-  }
+  var filter = {};
+  filter[this.idProp] = id;
+
+  // Search by YD
+  found = this._findWhere(filter);
 
   // Search by CID
-  for(i = 0; i < total; i++)
-  {
-    if(parseInt(this._records[i]["_cid"]) === id && !found)
-    {
-      found = this._records[i];
-    }
+  if(!found.length)
+  { 
+    filter = {};
+    filter["_cid"] = id
+    found = this._findWhere(filter)
   }
 
-  if(found)
-    record = found;
+  if(callback)
+  {
+    this._findRemotelly(id, callback);
+  }
 
-  this._run_plugins("find", record, callback);
+  return found[0];
+}
+
+Retain._findRemotelly = function(id, callback)
+{
+  var self = this;
+
+  this._runPlugins("find", id, function(res, err)
+  {
+
+    var rec = res;
+
+    if(res)
+    {
+      var record = self.find(res[self.idProp]);
+
+      if(record)
+      {
+        record.set(res);
+      }
+      else
+      {
+        var newRecord = self.new()
+        newRecord.set(res);
+      }
+    }
+    
+    callback(res, err)
+
+  });
+}
+
+/**
+* Searchs for model instances based on the specified properties.
+*
+* If a callback is suplied, and there is at least one plugin attached to the model, searchs the records remotelly.
+* @method search
+* @static
+* @param {Object} Properties.
+* @param {Function} [callback] If suplied, it will be called when the remote record was retrieved.
+* @return {Array} Array containing the found records.
+* @example
+  ```
+    var eyesWideShut = Movies.new();
+    eyesWideShut.set({name:"Eyes Wide Shut"});
+    
+    var pulpFiction = Movies.new();
+    pulpFiction.set({name:"Pulp Fiction"});
+
+    Movies.search({name:"Pulp Fiction"}) // Returns an array '[<eyesWideShutInstance>]'
+
+    // Searchs remotelly for records with the name 'Pulp Fiction'
+    Movies.find({name:"Pulp Fiction"}, function(records, err)
+    {
+      
+    });
+
+  ```
+*/
+Retain.search = function(props, callback)
+{
+  var found = null;
+  var filter = props;
+
+  found = this._findWhere(filter);
+
+  if(callback)
+  {
+    this._searchRemotelly(props, callback);
+  }
+
+  if(found.length === 1)
+    return found[0];
+
   return found;
+}
+
+Retain._searchRemotelly = function(props, callback)
+{
+  var self = this;
+  var recordExists;
+
+  this._runPlugins("search", props, function(res, err)
+  {
+    var results = res;
+    var filter = {};
+    var record = null;
+    var recordExists;
+
+    for(var i = 0, total = results.length; i < total; i++)
+    {
+      filter[self.idProp] = results[i][self.idProp];
+
+      recordExists = self._findWhere(filter);
+
+      if(recordExists[0])
+      {
+        recordExists[0].set(results[i]);
+      }
+      else
+      {
+        record = this.new()
+        record.set(results[i]);
+      }
+    }
+
+    if(res.length === 1)
+      callback(res[0], err)
+    else
+      callback(res, err)
+  })
 }
 
 /**
@@ -2497,15 +2668,43 @@ Retain.find = function(id, callback)
 */
 Retain.all = function(callback)
 {
-  this._run_plugins("all", this._records, callback);
+  this._allRemotelly(callback);
+
   return this._records;
+}
+
+Retain._allRemotelly = function(callback)
+{
+  var self = this;
+
+  if(callback)
+  {
+    this._runPlugins("all", this._records, function(res, err)
+      {
+        if(res)
+        {
+          self._records = [];
+
+          for(var i = 0, total = res.length; i < total; i++)
+          {
+            var record = self.new(res[i])
+          }
+          callback(self._records, err)
+        }
+        else
+        {
+          callback(res, err)
+        }
+        
+      });
+  }
 }
 
 /**
 * Removes/deletes the record locally.
 *
 * If a callback is suplied, and there is at least one plugin attached to the model, removes the record remotelly.
-* @method find
+* @method remove
 * @param {Function} [callback] If suplied, it will be called when the record was removed/deleted remotelly.
 * @example
   ```
@@ -2527,6 +2726,7 @@ Retain.prototype.remove = function(callback)
 {
   var cid = this._cid;
   var record = null;
+  var self = this;
 
   var total = this.constructor._records.length;
 
@@ -2543,7 +2743,18 @@ Retain.prototype.remove = function(callback)
     }
   };
 
-  this.constructor._run_plugins("remove", this, callback);
+  if(callback)
+  {
+    this.constructor._runPlugins("remove", this[this.constructor.idProp], function(res, err)
+      {
+        self.emit("remove", self);
+        callback(res, err);
+      });
+  }
+  else
+  {
+    self.emit("remove", self);
+  }
 }
 
 /**
@@ -2567,17 +2778,17 @@ Retain.prototype.remove = function(callback)
 */
 Retain.prototype.save = function(callback)
 {
-  var that = this;
+  var self = this;
 
   if(this._isNew() && !this._isRemoved())
   {
-    that.constructor._run_plugins("new", that, function()
+    self.constructor._runPlugins("new", self, function()
     {
-      var keys = Object.keys(that._keys);
+      var keys = Object.keys(self._keys);
 
       if(keys.length)
       {
-        that.constructor._run_plugins("set", that, function()
+        self.constructor._runPlugins("set", self, function()
         {
           if(callback)
           {
@@ -2599,7 +2810,7 @@ Retain.prototype.save = function(callback)
   }
   else if(!this._isRemoved())
   {
-    that.constructor._run_plugins("set", that, function()
+    self.constructor._runPlugins("set", self, function()
     {
       if(callback)
         callback()
@@ -2633,27 +2844,22 @@ Retain.prototype._isNew = function()
     return false;
 }
 
-Retain._run_plugins = function(method, initialValue, callback)
+Retain._runPlugins = function(method, initialValue, callback)
 {
-  if(callback)
-  {
-    // Reference https://github.com/kriskowal/q#sequences
-    var plugins = this._get_plugins(method);
-    var self = this;
+  // Reference https://github.com/kriskowal/q#sequences
+  var plugins = this._getPlugins(method);
+  var self = this;
 
-    plugins.reduce(Q.when, Q(initialValue))
-      .then(function(res)
-      {
-        self.emit("change", res);
-        self.emit(method, res);
-        callback(res,null);
-      })
-      .fail(function(err)
-      {
-        self.emit("error", err);
-        callback(null,err)
-      });
-  }
+  plugins.reduce(Q.when, Q(initialValue))
+    .then(function(res)
+    {
+      callback(res,null);
+    })
+    .fail(function(err)
+    {
+      self.emit("error", err);
+      callback(null,err)
+    });
 }
 
 Retain._init = function()
@@ -2663,7 +2869,7 @@ Retain._init = function()
   this._TOTAL = this._records.length
 }
 
-Retain._get_plugins = function(method)
+Retain._getPlugins = function(method)
 {
   var promises = [];
 
@@ -2682,7 +2888,7 @@ Retain.prototype._keys = {}
 
 Retain.prototype._cid = {}
 
-Retain.prototype._validate_type = function(prop, val)
+Retain.prototype._validateType = function(prop, val)
 {
   var attr = this.constructor._attrs[prop];
 
@@ -2697,6 +2903,7 @@ Retain.prototype._validate_type = function(prop, val)
       case "Number":
         return (typeof val === "number");
       case "Array":
+        return (Array.isArray(val))
       case "Object":
       case "Date":
         return (val instanceof attr);
@@ -2704,11 +2911,11 @@ Retain.prototype._validate_type = function(prop, val)
   }
 }
 
-Retain.prototype._validate_prop = function(prop, value)
+Retain.prototype._validateProp = function(prop, value)
 {
   if(this.constructor._attrs[prop])
   {
-    if(this._validate_type(prop, value))
+    if(this._validateType(prop, value))
     {
       this._keys[prop] = value;
     }
@@ -2723,12 +2930,51 @@ Retain.prototype._validate_prop = function(prop, value)
   }
 }
 
+Retain._findWhere = function(params)
+{
+  var found = [];
+
+  for(var i = 0; i < this._records.length; i++)
+  {
+    var record = this._records[i];
+
+    if(this._hasProperties(record, params))
+    {
+      found.push(record);
+    }
+  }
+
+  return found;
+}
+
+Retain._hasProperties = function(obj, props)
+{
+  if(!props["_cid"] && !props[this.idProp])
+  {
+    obj = obj._keys;
+  }
+
+  for (var prop in props) 
+  {
+    if(obj[prop] != props[prop])
+    {
+      return false;
+    }
+  }
+
+  return true;
+}
 },{"happens":5,"q":3}],5:[function(require,module,exports){
 module.exports = function(target) {
   for(var prop in Happens)
     target[prop] = Happens[prop];
   return target;
 };
+
+function validate(fn) {
+  if(!(fn && fn instanceof Function))
+    throw new Error(fn + 'is not a function');
+}
 
 var Happens = {
   __init: function(event) {
@@ -2737,6 +2983,7 @@ var Happens = {
   },
 
   on: function(event, fn) {
+    validate(fn);
     this.__init(event).push(fn);
   },
 
@@ -2746,16 +2993,18 @@ var Happens = {
   },
 
   once: function(event, fn) {
+    validate(fn);
     var self = this, wrapper = function() {
       self.off(event, wrapper);
       fn.apply(this, arguments);
-    }
+    };
     this.on(event, wrapper );
   },
 
   emit: function(event) {
-    var i, pool = pool = this.__init(event).slice(0);
-    for(i in pool) pool[i].apply(this, [].slice.call(arguments, 1));
+    var i, pool = this.__init(event).slice(0);
+    for(i in pool)
+      pool[i].apply(this, [].slice.call(arguments, 1));
   }
 };
 },{}],6:[function(require,module,exports){
@@ -2838,7 +3087,21 @@ describe("RetainLocalStorage", function()
       {
         var item = window.localStorage.getItem(collectionName+"-"+res.id);
         item = JSON.parse(item);
-        assert.equal(item._keys.name, "PI");
+        assert.equal(item.name, "PI");
+        done();
+      }
+    });
+  })
+
+  it("it should search the movie by name", function(done)
+  {
+    Movies.search({name:"PI"},function(res, err)
+    {
+      if(res)
+      {
+        var item = window.localStorage.getItem(collectionName+"-"+res.id);
+        item = JSON.parse(item);
+        assert.equal(item.name, "PI");
         done();
       }
     });
