@@ -1,9 +1,9 @@
 ![Retain-LocalStorage](assets/logo.jpg)
 ===========
 
-[Retain](https://github.com/giuliandrimba/retain) localStorage plugin
+[Retain](https://github.com/retain/retain) localStorage plugin
 
-[![Build Status](https://travis-ci.org/giuliandrimba/retain-localstorage.png?branch=master)](https://travis-ci.org/giuliandrimba/retain-localstorage) 
+[![Build Status](https://travis-ci.org/retain/retain-localstorage.png?branch=master)](https://travis-ci.org/retain/retain-localstorage) 
 
 ### Example
 
@@ -25,7 +25,7 @@ Movies.use(retainLocalStorage, { name: "movies"});
 
 ### Creating a plugin
 
-[Retain](https://github.com/giuliandrimba/retain) use Promises internally to transfer data between the plugins.
+[Retain](https://github.com/retain/retain) use Promises internally to transfer data between the plugins.
 
 To create a plugin, it is necessary to implement each of the following __Retain__ methods.
 
