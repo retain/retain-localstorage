@@ -77,7 +77,21 @@ describe("RetainLocalStorage", function()
       {
         var item = window.localStorage.getItem(collectionName+"-"+res.id);
         item = JSON.parse(item);
-        assert.equal(item._keys.name, "PI");
+        assert.equal(item.name, "PI");
+        done();
+      }
+    });
+  })
+
+  it("it should search the movie by name", function(done)
+  {
+    Movies.search({name:"PI"},function(res, err)
+    {
+      if(res)
+      {
+        var item = window.localStorage.getItem(collectionName+"-"+res.id);
+        item = JSON.parse(item);
+        assert.equal(item.name, "PI");
         done();
       }
     });

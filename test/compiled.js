@@ -15,10 +15,13 @@ module.exports = function(){
   api.find = _find;
   api.all = _all;
   api.remove = _remove;
+  api.search = _search;
   api._save = _save;
   api._records = _records
-  api._get_records = _get_records
-  api._get_record = _get_record
+  api._getRecords = _getRecords
+  api._findById = _findById
+  api._findByProp = _findByProp
+  api._findRecord = _findRecord
 
   return api;
 };
@@ -65,7 +68,7 @@ function _new(record)
   }
 
   window.localStorage.setItem(this.config.name+"-"+record.id, JSON.stringify(record));
-  this._records().push({id:record.id.toString(), cid:record._cid});
+  this._records().push({id:record.id.toString(), _cid:record._cid});
   this._save();
 
   return Q(record);
@@ -74,7 +77,7 @@ function _new(record)
 function _set(record)
 {
   var deferred = Q.defer();
-  var found = this._get_record(record.id) || this._get_record(record._cid);
+  var found = this._findById(record.id) || this._findById(record._cid);
 
   if(!found)
   {
@@ -89,13 +92,13 @@ function _set(record)
   return deferred.promise;
 }
 
-function _find(record)
+function _find(id)
 {
   var deferred = Q.defer();
 
-  var id = record.id;
-  var records = this._get_records();
-  var found = this._get_record(id);
+  var records = this._getRecords();
+
+  var found = this._findById(id);
 
   if(found)
   {
@@ -103,9 +106,8 @@ function _find(record)
   }
   else
   {
-    deferred.reject(new Error("Couldn't find record with the ID " + record.id));
+    deferred.reject(new Error("Couldn't find record with the ID " + id));
   }
-
   return deferred.promise;
 }
 
@@ -118,7 +120,7 @@ function _all(records)
     this._save();
   }
 
-  return Q(this._get_records());
+  return Q(this._getRecords());
 }
 
 function _remove(record)
@@ -141,19 +143,55 @@ function _remove(record)
   return Q(record);
 }
 
-function _get_record(id)
+function _search(record)
 {
-  var records = this._get_records();
+  var deferred = Q.defer();
+  var found = this._findRecord(record);
+
+  if(found)
+  {
+    deferred.resolve(found);
+  }
+  else
+  {
+    deferred.reject(new Error("Couldn't find record with the properties: " + record));
+  }
+
+  return deferred.promise;
+}
+
+function _findRecord(props)
+{
+  var found = null;
+
+  for (var p in props)
+  {
+    found = this._findByProp(p, props[p])
+
+    if(found)
+      return found
+  }
+
+  return found;
+}
+
+function _findById(id)
+{
+  var found = null;
+
+  found = this._findRecord({id:id, _cid:id})
+
+  return found;
+}
+
+function _findByProp(key, val)
+{
+  var records = this._getRecords();
   var found = null;
 
   for(var i = 0, total = records.length; i < total; i++)
   {
-    if(records[i].id === id)
-    {
-      return records[i];
-    }
-
-    if(parseInt(records[i]._cid) === parseInt(id))
+    if(records[i][key] === val)
     {
       return records[i];
     }
@@ -166,7 +204,7 @@ function _save()
 {
   var storageItems = [];
 
-  for(var i =0, total = this._records().length; i < total; i++)
+  for(var i = 0, total = this._records().length; i < total; i++)
   {
     storageItems.push(JSON.stringify(this._records()[i]))
   }
@@ -174,7 +212,7 @@ function _save()
   window.localStorage.setItem(this.config.name, JSON.stringify(storageItems));
 }
 
-function _get_records()
+function _getRecords()
 {
   var items = [];
   var record = {};
@@ -185,7 +223,6 @@ function _get_records()
     var item = JSON.parse(window.localStorage.getItem(this.config.name+"-"+record.id));
     items.push(item);
   }
-
   return items;
 }
 
@@ -2310,8 +2347,13 @@ Retain.attrs = function(props)
     })
   ```
 */
-Retain.new = function (callback)
+Retain.new = function (props, callback)
 {
+  var fn = callback;
+
+  if(typeof props === "function")
+    fn = props;
+
   var key, record, value;
 
   record = new this;
@@ -2321,7 +2363,10 @@ Retain.new = function (callback)
   this._TOTAL = this._records.length
   record._cid = this._TOTAL + this._REMOVED;
 
-  this._newRemotelly(record, callback);
+  if(typeof props === "object")
+    record.set(props);
+
+  this._newRemotelly(record, fn);
 
   return record;
 }
@@ -2331,7 +2376,13 @@ Retain._newRemotelly = function(record, callback)
   var self = this;
   if(callback)
   {
-    this._runPlugins("new", record, function(res, err)
+    var params;
+
+    params = record._keys;
+    params["id"] = record[this.constructor.idProp];
+    params["_cid"] = record._cid;
+
+    this._runPlugins("new", params, function(res, err)
       {
         var rec = res;
 
@@ -2339,9 +2390,13 @@ Retain._newRemotelly = function(record, callback)
         {
           rec = record.set(res);
         }
-
+        self.emit("new", record);
         callback(rec, err)
       });
+  }
+  else
+  {
+    self.emit("new", record);
   }
 }
 
@@ -2371,7 +2426,6 @@ Retain._newRemotelly = function(record, callback)
 */
 Retain.prototype.set = function(props, callback)
 {
-
   var args = 1 <= props.length ? [].slice.call(props, 0) : [];
 
   for(var prop in props)
@@ -2390,12 +2444,13 @@ Retain.prototype._setRemotelly = function(props, record, callback)
   var params;
 
   params = props;
-  params.id = record[this.constructor.idProp];
+  params["id"] = record[this.constructor.idProp];
 
   if(callback)
   {
     this.constructor._runPlugins("set", params, function(res, err)
       {
+
         var rec = res;
 
         if(res)
@@ -2403,8 +2458,13 @@ Retain.prototype._setRemotelly = function(props, record, callback)
           rec = self.set(res);
         }
         
+        self.emit("change", record);
         callback(rec, err)
       });
+  }
+  else
+  {
+    self.emit("change", record);
   }
 }
 
@@ -2450,41 +2510,99 @@ Retain.prototype.get = function(prop)
 
   ```
 */
-Retain.find = function(props, callback)
+Retain.find = function(id, callback)
 {
   var found = null;
-  var filter = props;
   var self = this;
 
-  if (typeof props === "number" || typeof props === "string")
-  {
-    // Search by ID
+  var filter = {};
+  filter[this.idProp] = id;
+
+  // Search by YD
+  found = this._findWhere(filter);
+
+  // Search by CID
+  if(!found.length)
+  { 
     filter = {};
-    filter[this.idProp] = props;
-    found = this._findWhere(filter);
-
-    // Search by CID
-    if(!found.length)
-    { 
-      filter = {};
-      filter["_cid"] = props
-      found = this._findWhere(filter)
-    }
-
-  }
-  else
-  {
-    found = this._findWhere(filter);
+    filter["_cid"] = id
+    found = this._findWhere(filter)
   }
 
   if(callback)
   {
-    this._allRemotelly(function(res, err)
-    {
-      var result = self.find(props);
+    this._findRemotelly(id, callback);
+  }
 
-      callback(result, err)
-    })
+  return found[0];
+}
+
+Retain._findRemotelly = function(id, callback)
+{
+  var self = this;
+
+  this._runPlugins("find", id, function(res, err)
+  {
+
+    var rec = res;
+
+    if(res)
+    {
+      var record = self.find(res[self.idProp]);
+
+      if(record)
+      {
+        record.set(res);
+      }
+      else
+      {
+        var newRecord = self.new()
+        newRecord.set(res);
+      }
+    }
+    
+    callback(res, err)
+
+  });
+}
+
+/**
+* Searchs for model instances based on the specified properties.
+*
+* If a callback is suplied, and there is at least one plugin attached to the model, searchs the records remotelly.
+* @method search
+* @static
+* @param {Object} Properties.
+* @param {Function} [callback] If suplied, it will be called when the remote record was retrieved.
+* @return {Array} Array containing the found records.
+* @example
+  ```
+    var eyesWideShut = Movies.new();
+    eyesWideShut.set({name:"Eyes Wide Shut"});
+    
+    var pulpFiction = Movies.new();
+    pulpFiction.set({name:"Pulp Fiction"});
+
+    Movies.search({name:"Pulp Fiction"}) // Returns an array '[<eyesWideShutInstance>]'
+
+    // Searchs remotelly for records with the name 'Pulp Fiction'
+    Movies.find({name:"Pulp Fiction"}, function(records, err)
+    {
+      
+    });
+
+  ```
+*/
+Retain.search = function(props, callback)
+{
+  var found = null;
+  var filter = props;
+
+  found = this._findWhere(filter);
+
+  if(callback)
+  {
+    this._searchRemotelly(props, callback);
   }
 
   if(found.length === 1)
@@ -2493,42 +2611,40 @@ Retain.find = function(props, callback)
   return found;
 }
 
-Retain._findRemotelly = function(filter, callback)
+Retain._searchRemotelly = function(props, callback)
 {
   var self = this;
-  var params;
+  var recordExists;
 
-  params = filter;
-
-  if(callback)
+  this._runPlugins("search", props, function(res, err)
   {
-    this._runPlugins("find", filter, function(res, err)
+    var results = res;
+    var filter = {};
+    var record = null;
+    var recordExists;
+
+    for(var i = 0, total = results.length; i < total; i++)
+    {
+      filter[self.idProp] = results[i][self.idProp];
+
+      recordExists = self._findWhere(filter);
+
+      if(recordExists[0])
       {
-        var rec = res;
+        recordExists[0].set(results[i]);
+      }
+      else
+      {
+        record = this.new()
+        record.set(results[i]);
+      }
+    }
 
-        if(res)
-        {
-          for(var i = 0, total = res.length; i < total; i++)
-          {
-            var record = self.find(res.id);
-
-            if(record.length)
-            {
-              record[0].set(res);
-            }
-            else
-            {
-              var newRecord = this.new()
-              newRecord.set(res);
-            }
-          }
-
-        }
-        
-        callback(res, err)
-
-      });
-  }
+    if(res.length === 1)
+      callback(res[0], err)
+    else
+      callback(res, err)
+  })
 }
 
 /**
@@ -2567,10 +2683,19 @@ Retain._allRemotelly = function(callback)
       {
         if(res)
         {
-          self._records = res;
+          self._records = [];
+
+          for(var i = 0, total = res.length; i < total; i++)
+          {
+            var record = self.new(res[i])
+          }
+          callback(self._records, err)
+        }
+        else
+        {
+          callback(res, err)
         }
         
-        callback(res, err)
       });
   }
 }
@@ -2601,6 +2726,7 @@ Retain.prototype.remove = function(callback)
 {
   var cid = this._cid;
   var record = null;
+  var self = this;
 
   var total = this.constructor._records.length;
 
@@ -2612,7 +2738,6 @@ Retain.prototype.remove = function(callback)
 
     if(parseInt(record._cid) === cid)
     {
-      // console.log("record._cid", record._cid, record);
       this.constructor._REMOVED++;
       this.constructor._records.splice(i,1);
     }
@@ -2620,7 +2745,15 @@ Retain.prototype.remove = function(callback)
 
   if(callback)
   {
-    this.constructor._runPlugins("remove", this, callback);
+    this.constructor._runPlugins("remove", this[this.constructor.idProp], function(res, err)
+      {
+        self.emit("remove", self);
+        callback(res, err);
+      });
+  }
+  else
+  {
+    self.emit("remove", self);
   }
 }
 
@@ -2645,17 +2778,17 @@ Retain.prototype.remove = function(callback)
 */
 Retain.prototype.save = function(callback)
 {
-  var that = this;
+  var self = this;
 
   if(this._isNew() && !this._isRemoved())
   {
-    that.constructor._runPlugins("new", that, function()
+    self.constructor._runPlugins("new", self, function()
     {
-      var keys = Object.keys(that._keys);
+      var keys = Object.keys(self._keys);
 
       if(keys.length)
       {
-        that.constructor._runPlugins("set", that, function()
+        self.constructor._runPlugins("set", self, function()
         {
           if(callback)
           {
@@ -2677,7 +2810,7 @@ Retain.prototype.save = function(callback)
   }
   else if(!this._isRemoved())
   {
-    that.constructor._runPlugins("set", that, function()
+    self.constructor._runPlugins("set", self, function()
     {
       if(callback)
         callback()
@@ -2714,14 +2847,12 @@ Retain.prototype._isNew = function()
 Retain._runPlugins = function(method, initialValue, callback)
 {
   // Reference https://github.com/kriskowal/q#sequences
-  var plugins = this._get_plugins(method);
+  var plugins = this._getPlugins(method);
   var self = this;
 
   plugins.reduce(Q.when, Q(initialValue))
     .then(function(res)
     {
-      self.emit("change", res);
-      self.emit(method, res);
       callback(res,null);
     })
     .fail(function(err)
@@ -2738,7 +2869,7 @@ Retain._init = function()
   this._TOTAL = this._records.length
 }
 
-Retain._get_plugins = function(method)
+Retain._getPlugins = function(method)
 {
   var promises = [];
 
@@ -2950,7 +3081,21 @@ describe("RetainLocalStorage", function()
       {
         var item = window.localStorage.getItem(collectionName+"-"+res.id);
         item = JSON.parse(item);
-        assert.equal(item._keys.name, "PI");
+        assert.equal(item.name, "PI");
+        done();
+      }
+    });
+  })
+
+  it("it should search the movie by name", function(done)
+  {
+    Movies.search({name:"PI"},function(res, err)
+    {
+      if(res)
+      {
+        var item = window.localStorage.getItem(collectionName+"-"+res.id);
+        item = JSON.parse(item);
+        assert.equal(item.name, "PI");
         done();
       }
     });
